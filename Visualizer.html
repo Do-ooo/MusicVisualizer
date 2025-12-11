@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDM Visualizer - Sphere Core</title>
+    <style>
+        :root {
+            --theme-color: #ffaa00;
+            --theme-rgb: 255, 170, 0; 
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000000;
+            font-family: 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            user-select: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; 
+        }
+
+        .glass-panel {
+            background: rgba(30, 30, 30, 0.4); 
+            backdrop-filter: blur(15px); 
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+            pointer-events: auto; 
+        }
+
+        .playlist-container {
+            position: absolute;
+            top: 50%;
+            left: 30px;
+            transform: translateY(-50%);
+            width: 260px;
+            height: 60vh;
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 20;
+        }
+
+        .playlist-header {
+            padding: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            color: rgba(255, 255, 255, 0.9);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+
+        .track-list {
+            flex: 1;
+            overflow-y: auto;
+            list-style: none;
+            margin: 0;
+            padding: 10px;
+        }
+        .track-list::-webkit-scrollbar { width: 4px; }
+        .track-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 2px; }
+
+        .track-item {
+            padding: 10px 15px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between; 
+        }
+        .track-item:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+        .track-item.active {
+            background: rgba(var(--theme-rgb), 0.25);
+            color: var(--theme-color);
+            border: 1px solid rgba(var(--theme-rgb), 0.4);
+            font-weight: bold;
+        }
+
+        .track-name-text {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-right: 10px;
+        }
+
+        .delete-icon {
+            width: 20px; 
+            height: 20px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            opacity: 0; 
+            transition: opacity 0.2s, transform 0.2s;
+            border-radius: 4px;
+        }
+        .track-item:hover .delete-icon { opacity: 0.6; }
+        .delete-icon:hover { opacity: 1 !important; transform: scale(1.1); background: rgba(255,0,0,0.3); }
+        .delete-icon svg { width: 14px; height: 14px; fill: #fff; pointer-events: none; }
+
+        .upload-section {
+            padding: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .upload-btn {
+            display: block;
+            width: 100%;
+            padding: 12px 0;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            box-sizing: border-box;
+            pointer-events: auto; 
+            position: relative;
+        }
+        .upload-btn:hover {
+            background: rgba(var(--theme-rgb), 0.15);
+            border-color: var(--theme-color);
+            color: var(--theme-color);
+        }
+        input[type="file"] { display: none; }
+
+        .settings-container {
+            position: absolute;
+            top: 50%;
+            right: 30px;
+            transform: translateY(-50%);
+            width: 260px;
+            height: auto;
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 20;
+        }
+
+        .settings-header {
+            padding: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            color: rgba(255, 255, 255, 0.9);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+
+        .settings-content {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .style-btn {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 15px;
+            border-radius: 12px;
+            cursor: default; /* 这里改为了默认光标，因为只有一个模式不需要点击 */
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            background: rgba(255, 255, 255, 0.02);
+        }
+        /* 强制保持激活状态样式 */
+        .style-btn.active {
+            background: rgba(var(--theme-rgb), 0.2);
+            border-color: rgba(var(--theme-rgb), 0.5);
+        }
+        .style-icon svg { fill: rgba(255,255,255,0.7); width: 24px; height: 24px; }
+        .style-btn.active .style-icon svg { fill: var(--theme-color); }
+        .style-name { font-size: 12px; color: rgba(255, 255, 255, 0.9); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+
+        .divider { height: 1px; background: rgba(255, 255, 255, 0.15); margin: 5px 0; width: 100%; }
+
+        .color-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 10px 15px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .color-item:hover { background: rgba(255, 255, 255, 0.1); }
+        .color-circle {
+            width: 20px; height: 20px; border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .color-item.active .color-circle { border-color: #fff; transform: scale(1.2); box-shadow: 0 0 12px currentColor; }
+        .color-name { font-size: 12px; color: rgba(255, 255, 255, 0.7); letter-spacing: 1px; }
+        .color-item.active .color-name { color: #fff; font-weight: bold; }
+
+        .bottom-controls-wrapper {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 50%;
+            max-width: 600px;
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 20;
+        }
+        .progress-container { width: 100%; }
+        .controls-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; width: 100%; position: relative; }
+        .info-col {
+            font-family: monospace; font-size: 12px; color: rgba(255, 255, 255, 0.6);
+            letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .info-col.left { text-align: left; padding-right: 15px; }
+        .info-col.right { text-align: right; padding-left: 15px; }
+
+        .play-icon-btn {
+            width: 54px; height: 54px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; transition: all 0.2s; flex-shrink: 0;
+        }
+        .play-icon-btn:hover { background: rgba(var(--theme-rgb), 0.3); border-color: var(--theme-color); transform: scale(1.1); box-shadow: 0 0 20px rgba(var(--theme-rgb), 0.4); }
+        .play-icon-btn svg { fill: #fff; width: 20px; height: 20px; margin-left: 3px; }
+        .play-icon-btn.playing svg { margin-left: 0; width: 18px; height: 18px; }
+
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer;
+            background: rgba(255, 255, 255, 0.15); border-radius: 2px; transition: background 0.2s;
+        }
+        input[type=range]:hover::-webkit-slider-runnable-track { background: rgba(255, 255, 255, 0.25); }
+        input[type=range]::-webkit-slider-thumb {
+            height: 12px; width: 12px; border-radius: 50%;
+            background: var(--theme-color); cursor: pointer; -webkit-appearance: none;
+            margin-top: -4px; box-shadow: 0 0 10px var(--theme-color); transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.5); }
+
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="playlist-container glass-panel">
+            <div class="playlist-header">Playlist</div>
+            <ul class="track-list" id="track-list"><li class="track-item" style="pointer-events: none; opacity: 0.5;">Empty List</li></ul>
+            <div class="upload-section">
+                <label class="upload-btn">
+                    + Add Tracks
+                    <input type="file" id="file-input" accept="audio/*" multiple>
+                </label>
+            </div>
+        </div>
+
+        <div class="settings-container glass-panel">
+            <div class="settings-header">Visuals</div>
+            <div class="settings-content">
+                <!-- 只保留 Sphere Core 按钮 -->
+                <div class="style-btn active" id="btn-sphere">
+                    <div class="style-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg></div>
+                    <div class="style-name">Sphere Core</div>
+                </div>
+
+                <div class="divider"></div>
+                <div class="color-item active" onclick="changeTheme(0)"><div class="color-circle" style="background: #ffaa00; color: #ffaa00;"></div><div class="color-name">Amber</div></div>
+                <div class="color-item" onclick="changeTheme(1)"><div class="color-circle" style="background: #00ccff; color: #00ccff;"></div><div class="color-name">Cyber Blue</div></div>
+                <div class="color-item" onclick="changeTheme(2)"><div class="color-circle" style="background: #ff00ff; color: #ff00ff;"></div><div class="color-name">Neon Purple</div></div>
+                <div class="color-item" onclick="changeTheme(3)"><div class="color-circle" style="background: #00ff44; color: #00ff44;"></div><div class="color-name">Toxic Green</div></div>
+            </div>
+        </div>
+
+        <div class="bottom-controls-wrapper" id="controls-area" style="opacity: 0.3; pointer-events: none; transition: opacity 0.5s;">
+            <div class="progress-container"><input type="range" id="seek-bar" value="0" max="100" step="0.1"></div>
+            <div class="controls-row">
+                <div class="info-col left"><span id="track-name">Select a Song</span></div>
+                <div class="play-icon-btn" id="play-btn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+                <div class="info-col right"><span id="current-time">00:00</span> / <span id="duration-time">00:00</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // 保留较高粒子数以获得更佳的球体细节
+        const PARTICLE_COUNT = 75000; 
+        const BASE_RADIUS = 22;       
+        
+        // 固定的 Sphere 模式参数
+        const SPHERE_SIZE = 0.12; 
+        const SPHERE_OPACITY = 0.8;
+        const SPHERE_BASE_BRIGHTNESS = 0.7; 
+
+        const THEMES = [
+            { name: 'Amber', hex: '#ffaa00', rgb: '255, 170, 0', r:1, g:0.66, b:0, glowThreshold: 16 },
+            { name: 'Cyber Blue', hex: '#00ccff', rgb: '0, 204, 255', r:0, g:0.8, b:1, glowThreshold: 16 },
+            { name: 'Neon Purple', hex: '#ff00ff', rgb: '255, 0, 255', r:1, g:0, b:1, glowThreshold: 16 },
+            { name: 'Toxic Green', hex: '#00ff44', rgb: '0, 255, 68', r:0, g:1, b:0.26, glowThreshold: 16 }
+        ];
+        let currentTheme = THEMES[0];
+
+        let scene, camera, renderer;
+        let particles, geometry, stars, meteor;
+        
+        let originalPositions, particleIndices, randomOffsets, currentExpansions;
+
+        let audioContext = null, audioAnalyser = null, audioSource = null;
+        const audioElement = new Audio(); 
+        
+        let isPlaying = false;
+        let bufferLength = 2048;
+        let dataArray = new Uint8Array(bufferLength); 
+        let time = 0; 
+        
+        let playlist = [], currentTrackIndex = -1;
+
+        const playBtn = document.getElementById('play-btn');
+        const seekBar = document.getElementById('seek-bar');
+        const currentTimeEl = document.getElementById('current-time');
+        const durationTimeEl = document.getElementById('duration-time');
+        const controlsArea = document.getElementById('controls-area');
+        const trackListEl = document.getElementById('track-list');
+        const trackNameEl = document.getElementById('track-name');
+        let isDraggingBar = false;
+
+        window.changeTheme = function(index) {
+            currentTheme = THEMES[index];
+            const items = document.querySelectorAll('.color-item');
+            items.forEach((item, idx) => item.classList.toggle('active', idx === index));
+            document.documentElement.style.setProperty('--theme-color', currentTheme.hex);
+            document.documentElement.style.setProperty('--theme-rgb', currentTheme.rgb);
+        };
+
+        // 移除了 switchVisualMode 函数，因为不再需要切换
+
+        init();
+        animate();
+        setupPlaylistUI();
+        setupControls();
+
+        function init() { 
+            initScene(); 
+            initBackground(); 
+            initParticles(); 
+        }
+
+        function initScene() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x000000, 0.002); 
+            
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.z = 75;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000);
+            container.appendChild(renderer.domElement);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function initBackground() {
+            const starGeo = new THREE.BufferGeometry();
+            const starCount = 2500; 
+            const starPos = [];
+            const starColors = [];
+
+            for(let i = 0; i < starCount; i++) {
+                const radius = 400 + Math.random() * 400; 
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                const x = radius * Math.sin(phi) * Math.cos(theta);
+                const y = radius * Math.sin(phi) * Math.sin(theta);
+                const z = radius * Math.cos(phi);
+                
+                starPos.push(x, y, z);
+                
+                const brightness = 0.5 + Math.random() * 0.5;
+                starColors.push(brightness, brightness, brightness);
+            }
+
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+            starGeo.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
+
+            const starMat = new THREE.PointsMaterial({
+                size: 1.5,
+                vertexColors: true,
+                transparent: true,
+                opacity: 1.0, 
+                sizeAttenuation: true
+            });
+
+            stars = new THREE.Points(starGeo, starMat);
+            scene.add(stars);
+
+            const pts = [new THREE.Vector3(0,0,0), new THREE.Vector3(-20, 5, 0)];
+            const meteorGeo = new THREE.BufferGeometry().setFromPoints(pts);
+            const meteorMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+            meteor = new THREE.Line(meteorGeo, meteorMat);
+            scene.add(meteor);
+            
+            scheduleMeteor();
+        }
+
+        function scheduleMeteor() {
+            setTimeout(() => {
+                shootMeteor();
+                scheduleMeteor();
+            }, 3000 + Math.random() * 5000);
+        }
+
+        function shootMeteor() {
+            if (!meteor) return;
+            const startX = 200 + Math.random() * 200;
+            const startY = 100 + Math.random() * 100;
+            const startZ = -100 - Math.random() * 100;
+            
+            meteor.position.set(startX, startY, startZ);
+            meteor.material.opacity = 1;
+            
+            const duration = 60; 
+            let frame = 0;
+            
+            function animateMeteor() {
+                if (frame > duration) {
+                    meteor.material.opacity = 0;
+                    return;
+                }
+                meteor.position.x -= 6;
+                meteor.position.y -= 3;
+                meteor.material.opacity -= 0.015;
+                frame++;
+                requestAnimationFrame(animateMeteor);
+            }
+            animateMeteor();
+        }
+
+        function calculateSpherePositions() {
+            if (!geometry) return;
+            const positions = geometry.attributes.position.array;
+            const phi = Math.PI * (3 - Math.sqrt(5)); 
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const y = 1 - (i / (PARTICLE_COUNT - 1)) * 2; 
+                const radiusAtY = Math.sqrt(1 - y * y); 
+                const theta = phi * i; 
+                const x = Math.cos(theta) * radiusAtY * BASE_RADIUS;
+                const _y = y * BASE_RADIUS;
+                const z = Math.sin(theta) * radiusAtY * BASE_RADIUS;
+                positions[i*3] = x; positions[i*3+1] = _y; positions[i*3+2] = z;
+            }
+            originalPositions = Float32Array.from(positions);
+            geometry.attributes.position.needsUpdate = true;
+        }
+
+        function initParticles() {
+            geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(PARTICLE_COUNT * 3);
+            const colors = new Float32Array(PARTICLE_COUNT * 3);
+            const pIndices = [];
+            const rOffsets = [];
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                colors[i*3] = 1; colors[i*3+1] = 1; colors[i*3+2] = 1;
+                pIndices.push(Math.floor(Math.random() * 80)); 
+                rOffsets.push(Math.random() * Math.PI * 2);
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            currentExpansions = new Float32Array(PARTICLE_COUNT).fill(0);
+            particleIndices = pIndices;
+            randomOffsets = rOffsets;
+
+            calculateSpherePositions(); 
+
+            const material = new THREE.PointsMaterial({
+                size: SPHERE_SIZE,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending, 
+                transparent: true,
+                opacity: SPHERE_OPACITY,
+                depthWrite: false 
+            });
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+        }
+
+        function initAudioSystem() {
+            if (audioContext) return; 
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            audioSource = audioContext.createMediaElementSource(audioElement);
+            audioAnalyser = audioContext.createAnalyser();
+            audioSource.connect(audioAnalyser);
+            audioAnalyser.connect(audioContext.destination);
+            audioAnalyser.fftSize = 2048; 
+            bufferLength = audioAnalyser.frequencyBinCount; 
+            dataArray = new Uint8Array(bufferLength);
+            audioElement.onloadedmetadata = () => {
+                durationTimeEl.innerText = formatTime(audioElement.duration);
+                seekBar.max = audioElement.duration;
+                controlsArea.style.opacity = 1;
+                controlsArea.style.pointerEvents = "auto";
+                if (audioContext.state === 'suspended') audioContext.resume();
+                audioElement.play().then(() => { isPlaying = true; updatePlayButtonIcon(); }).catch(e => console.log("Auto-play blocked", e));
+            };
+            
+            audioElement.onended = () => { 
+                if (currentTrackIndex < playlist.length - 1) {
+                    playTrack(currentTrackIndex + 1);
+                } else {
+                    isPlaying = false; 
+                    updatePlayButtonIcon(); 
+                }
+            };
+        }
+
+        function playTrack(index) {
+            if (index < 0 || index >= playlist.length) return;
+            initAudioSystem(); 
+            currentTrackIndex = index;
+            const file = playlist[index];
+            renderPlaylist(); 
+            currentExpansions.fill(0);
+            
+            const fileURL = URL.createObjectURL(file);
+            audioElement.src = fileURL;
+            audioElement.load();
+            trackNameEl.innerText = file.name.replace(/\.[^/.]+$/, "");
+        }
+
+        function removeTrack(index) {
+            if (index === currentTrackIndex) {
+                audioElement.pause();
+                audioElement.src = "";
+                isPlaying = false;
+                updatePlayButtonIcon();
+                trackNameEl.innerText = "Select a Song";
+                currentTimeEl.innerText = "00:00";
+                durationTimeEl.innerText = "00:00";
+                seekBar.value = 0;
+                currentTrackIndex = -1;
+            } else if (index < currentTrackIndex) {
+                currentTrackIndex--;
+            }
+            
+            playlist.splice(index, 1);
+            renderPlaylist();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.005;
+
+            const positions = geometry.attributes.position.array;
+            const colors = geometry.attributes.color.array;
+
+            let bassImpulse = 0;     
+            let highFreqEnergy = 0;
+            let isDrop = false;
+
+            if (isPlaying && audioAnalyser) {
+                audioAnalyser.getByteFrequencyData(dataArray);
+                let bassSum = 0;
+                for(let k=0; k<8; k++) bassSum += dataArray[k];
+                let rawBass = (bassSum / 8) / 255;
+                bassImpulse = Math.pow(rawBass, 3.0); 
+                if (bassImpulse > 0.6) isDrop = true;
+                let highSum = 0;
+                let highCount = 0;
+                const midHighStart = Math.floor(bufferLength * 0.3);
+                for(let k=midHighStart; k<bufferLength; k++) { highSum += dataArray[k]; highCount++; }
+                highFreqEnergy = (highSum / highCount) / 255;
+            }
+
+            const themeR = currentTheme.r;
+            const themeG = currentTheme.g;
+            const themeB = currentTheme.b;
+            const glowThresh = currentTheme.glowThreshold;
+
+            // === 纯净的 Sphere Core 逻辑 ===
+            let rotationSpeed = 0.002;
+            if (isPlaying) rotationSpeed += highFreqEnergy * 0.06;
+            particles.rotation.y -= rotationSpeed;
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const idx = i * 3;
+                const px = originalPositions[idx]; const py = originalPositions[idx + 1]; const pz = originalPositions[idx + 2];
+                
+                let targetExpansion = 0;
+                if (isPlaying) {
+                    const freqIndex = particleIndices[i] * 4; 
+                    const val = dataArray[freqIndex % bufferLength] || 0; 
+                    let specificDriver = Math.pow(val / 255, 2.8); 
+                    targetExpansion = (specificDriver * 11 + bassImpulse * 20);
+                    if (targetExpansion < 0.5) targetExpansion += Math.sin(time * 4 + randomOffsets[i]) * 0.2;
+                } else {
+                    targetExpansion = Math.sin(time * 2 + randomOffsets[i]) * 0.4;
+                }
+                const currentVal = currentExpansions[i];
+                if (targetExpansion > currentVal) currentExpansions[i] += (targetExpansion - currentVal) * 0.3;
+                else currentExpansions[i] += (targetExpansion - currentVal) * 0.05;
+
+                const nx = px / BASE_RADIUS; const ny = py / BASE_RADIUS; const nz = pz / BASE_RADIUS;
+                const dist = BASE_RADIUS + currentExpansions[i];
+                positions[idx] = nx * dist; positions[idx + 1] = ny * dist; positions[idx + 2] = nz * dist;
+
+                let r = SPHERE_BASE_BRIGHTNESS, g = SPHERE_BASE_BRIGHTNESS, b = SPHERE_BASE_BRIGHTNESS;
+                const colorFactor = currentExpansions[i];
+                if (colorFactor >= 1.0) {
+                    const intensity = Math.min(colorFactor / 8, 1); 
+                    r = SPHERE_BASE_BRIGHTNESS + (themeR - SPHERE_BASE_BRIGHTNESS) * intensity;
+                    g = SPHERE_BASE_BRIGHTNESS + (themeG - SPHERE_BASE_BRIGHTNESS) * intensity;
+                    b = SPHERE_BASE_BRIGHTNESS + (themeB - SPHERE_BASE_BRIGHTNESS) * intensity;
+                    if (colorFactor > glowThresh) { const h = (colorFactor - glowThresh) * 0.08; r+=h; g+=h; b+=h; }
+                }
+                if (isPlaying && isDrop && (i % 50 === 0) && targetExpansion > 4) { r=0.8; g=1.0; b=1.0; }
+
+                colors[idx] = r; colors[idx+1] = g; colors[idx+2] = b;
+            }
+
+            if (stars) {
+                stars.rotation.y += 0.0003;
+                stars.rotation.z += 0.0001;
+            }
+
+            if (meteor) {
+                meteor.position.x -= 6;
+                meteor.position.y -= 3;
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            geometry.attributes.color.needsUpdate = true;
+
+            if (isPlaying && !isDraggingBar) {
+                const curr = audioElement.currentTime;
+                seekBar.value = curr;
+                currentTimeEl.innerText = formatTime(curr);
+            }
+            renderer.render(scene, camera);
+        }
+
+        function renderPlaylist() {
+            trackListEl.innerHTML = '';
+            if (playlist.length === 0) {
+                trackListEl.innerHTML = '<li class="track-item" style="pointer-events: none; opacity: 0.5;">Empty List</li>';
+                return;
+            }
+            playlist.forEach((file, index) => {
+                const li = document.createElement('li');
+                li.className = 'track-item';
+                if (index === currentTrackIndex) li.classList.add('active');
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'track-name-text';
+                nameSpan.innerText = file.name.replace(/\.[^/.]+$/, "");
+                li.appendChild(nameSpan);
+
+                const delDiv = document.createElement('div');
+                delDiv.className = 'delete-icon';
+                delDiv.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+                delDiv.onclick = (e) => {
+                    e.stopPropagation(); 
+                    removeTrack(index);
+                };
+                li.appendChild(delDiv);
+
+                li.onclick = () => playTrack(index);
+                trackListEl.appendChild(li);
+            });
+        }
+
+        function setupPlaylistUI() {
+            const fileInput = document.getElementById('file-input');
+            fileInput.addEventListener('change', function(e) {
+                const files = e.target.files;
+                if (files.length > 0) {
+                    for (let i = 0; i < files.length; i++) {
+                        playlist.push(files[i]);
+                    }
+                    renderPlaylist();
+                    if (currentTrackIndex === -1) playTrack(0);
+                }
+            });
+        }
+
+        function setupControls() {
+            playBtn.addEventListener('click', function() {
+                if (!audioElement.src) return;
+                if (audioContext && audioContext.state === 'suspended') audioContext.resume();
+                if (isPlaying) {
+                    audioElement.pause();
+                    isPlaying = false;
+                } else {
+                    audioElement.play();
+                    isPlaying = true;
+                }
+                updatePlayButtonIcon();
+            });
+
+            seekBar.addEventListener('mousedown', () => isDraggingBar = true);
+            seekBar.addEventListener('touchstart', () => isDraggingBar = true);
+            seekBar.addEventListener('input', (e) => currentTimeEl.innerText = formatTime(e.target.value));
+            const finishDrag = (e) => {
+                if (isDraggingBar) {
+                    isDraggingBar = false;
+                    if(audioElement.src) audioElement.currentTime = e.target.value;
+                }
+            };
+            seekBar.addEventListener('mouseup', finishDrag);
+            seekBar.addEventListener('touchend', finishDrag);
+        }
+
+        function updatePlayButtonIcon() {
+            if (isPlaying) {
+                playBtn.classList.add('playing');
+                playBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+            } else {
+                playBtn.classList.remove('playing');
+                playBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+            }
+        }
+
+        function formatTime(s) {
+            const m = Math.floor(s / 60);
+            const sc = Math.floor(s % 60);
+            return `${m.toString().padStart(2, '0')}:${sc.toString().padStart(2, '0')}`;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
